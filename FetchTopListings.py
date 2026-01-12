@@ -4,7 +4,9 @@ from bs4 import BeautifulSoup
 import datetime
 import sqlite3
 import time
+import json
 
+NUMBER_OF_PAGES = 10
 LOOP = True
 LOOP_WAIT = 3600
 conn = sqlite3.connect("./SteamMarketplace.db")
@@ -32,7 +34,7 @@ def get_marketplace_rows_from_URL(URL):
     if not marketplace_request.status_code == 200:
         print("Request Not OK")
         return []
-    soup = BeautifulSoup(marketplace_request.content, "lxml")   # Make BeautifulSoup xml object
+    soup = BeautifulSoup(json.loads(marketplace_request.content)["results_html"], "lxml")   # Make BeautifulSoup xml object
     rows_xml = soup.find_all(class_="market_listing_row_link")  # Get rows of soup objects for every item in the page
     rows = []
     for row_xml in rows_xml:                                    # Parse the row boxes into data tuples
@@ -46,11 +48,12 @@ def get_marketplace_rows_from_URL(URL):
         ))
     return rows
 
-def get_marketplace_rows(numpages):
+def get_marketplace_rows(num_requests):
+    """get multiple pages of responses of rows."""
     rows = []
     # Generate URL queries for every page, then run get_marketplace_rows_from_URL(1) on them.
-    for i in range(numpages):
-        URL = f"https://steamcommunity.com/market/search?q=#p{i+1}_popular_desc"
+    for i in range(num_requests):
+        URL = f"https://steamcommunity.com/market/search/render/?query=&start={i*10}&count=10&search_descriptions=0&sort_column=popular&sort_dir=desc"
         print(URL)
         _rows = get_marketplace_rows_from_URL(URL)
         print(f"{URL} fetched {len(_rows)} results.")
@@ -72,7 +75,7 @@ def update_price_changes_diff():
 
 if __name__=="__main__":
     while True:
-        rows = get_marketplace_rows(2) # Get tuples
+        rows = get_marketplace_rows(NUMBER_OF_PAGES) # Get tuples
         # Print tuples
         print(f"{"Item Name":<64}{"Game Name":<64}{"Normal Price":<12}{"Quantity":<16}")
         for row in rows:
