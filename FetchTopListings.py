@@ -37,7 +37,7 @@ def get_marketplace_rows_from_URL(URL):
             row_xml.find(class_="market_listing_game_name").get_text(),
             int(row_xml.find(class_="market_listing_num_listings_qty").get_text().replace(',','')),
             float(row_xml.find(class_="normal_price").find("span").get_text()[1::]),
-            row_xml["href"]
+            row_xml["href"],
             datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%h:%m:%s")
         ))
     return rows
