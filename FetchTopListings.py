@@ -5,6 +5,8 @@ import datetime
 import sqlite3
 import time
 
+LOOP = True
+LOOP_WAIT = 3600
 conn = sqlite3.connect("./SteamMarketplace.db")
 
 def get_marketplace_rows_from_URL(URL):
@@ -13,7 +15,7 @@ def get_marketplace_rows_from_URL(URL):
     returns array of tupes of (string item_name, string game_name, int count, float price_starting_at, string link, string datetime)
     """
     # Retry the request if it returns 429 (too many requests) otherwise continue
-    wait_time = 30
+    wait_time = 60
     while True:
         marketplace_request = requests.get(URL)
         if marketplace_request.status_code == 429:
@@ -69,11 +71,14 @@ def update_price_changes_diff():
     cursor.execute("SELECT TOP 2 item_name, normal_price ORDER BY during DESC")
 
 if __name__=="__main__":
-    # Get tuples
-    rows = get_marketplace_rows(100)
-    # Print tuples
-    print(f"{"Item Name":<64}{"Game Name":<64}{"Normal Price":<12}{"Quantity":<16}")
-    for row in rows:
-        print(f"{row[0]:<64}{row[1]:<64}{row[2]:<12}{row[3]:<16}")
-    # Write tuples
-    write_to_top_results_database(rows)
+    while True:
+        rows = get_marketplace_rows(2) # Get tuples
+        # Print tuples
+        print(f"{"Item Name":<64}{"Game Name":<64}{"Normal Price":<12}{"Quantity":<16}")
+        for row in rows:
+            print(f"{row[0]:<64}{row[1]:<64}{row[2]:<12}{row[3]:<16}")
+        write_to_top_results_database(rows) # Write tuples
+        if LOOP:
+            time.sleep(LOOP_WAIT)
+        else:
+            break
