@@ -5,6 +5,8 @@ import datetime
 import sqlite3
 import time
 
+conn = sqlite3.connect("./SteamMarketplace.db")
+
 def get_marketplace_rows_from_URL(URL):
     """
     Fetches top marketplace entries
@@ -46,7 +48,8 @@ def get_marketplace_rows(numpages):
     rows = []
     # Generate URL queries for every page, then run get_marketplace_rows_from_URL(1) on them.
     for i in range(numpages):
-        URL = f"https://steamcommunity.com/market/search?q=#p{i}_popular_desc"
+        URL = f"https://steamcommunity.com/market/search?q=#p{i+1}_popular_desc"
+        print(URL)
         _rows = get_marketplace_rows_from_URL(URL)
         print(f"{URL} fetched {len(_rows)} results.")
         rows.extend(_rows)
@@ -56,11 +59,14 @@ def get_marketplace_rows(numpages):
 
 def write_to_top_results_database(rows):
     # Create connection, check database schema and create it if its not there, and then write all tuples to the database.
-    conn = sqlite3.connect("./SteamMarketplace.db")
     cursor = conn.cursor()
     cursor.execute("CREATE TABLE IF NOT EXISTS top_listings (item_name NVARCHAR(64) NOT NULL, game_name NVARCHAR(64) , quantity INTEGER, normal_price DECIMAL(9, 2), link NVARCHAR(256), during DATETIME);")
     cursor.executemany("INSERT INTO top_listings (item_name, game_name, quantity, normal_price, link, during) VALUES (?, ?, ?, ?, ?, ?)", rows)
     conn.commit()
+
+def update_price_changes_diff():
+    cursor = conn.cursor()
+    cursor.execute("SELECT TOP 2 item_name, normal_price ORDER BY during DESC")
 
 if __name__=="__main__":
     # Get tuples
