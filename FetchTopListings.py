@@ -6,15 +6,15 @@ import sqlite3
 import time
 import json
 
-NUMBER_OF_PAGES = 10
+NUMBER_OF_PAGES = 20
 LOOP = True
-LOOP_WAIT = 3600
+LOOP_WAIT = 1600
 conn = sqlite3.connect("./SteamMarketplace.db")
 
 def get_marketplace_rows_from_URL(URL):
     """
     Fetches top marketplace entries
-    returns array of tupes of (string item_name, string game_name, int count, float price_starting_at, string link, string datetime)
+    returns array of tupes of (string item_name, string game_name, int count, float price_starting_at, string link)
     """
     # Retry the request if it returns 429 (too many requests) otherwise continue
     wait_time = 60
@@ -44,7 +44,6 @@ def get_marketplace_rows_from_URL(URL):
             int(row_xml.find(class_="market_listing_num_listings_qty").get_text().replace(',','')),
             float(row_xml.find(class_="normal_price").find("span").get_text()[1::]),
             row_xml["href"],
-            datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%h:%m:%s")
         ))
     return rows
 
@@ -66,12 +65,47 @@ def write_to_top_results_database(rows):
     # Create connection, check database schema and create it if its not there, and then write all tuples to the database.
     cursor = conn.cursor()
     cursor.execute("CREATE TABLE IF NOT EXISTS top_listings (item_name NVARCHAR(64) NOT NULL, game_name NVARCHAR(64) , quantity INTEGER, normal_price DECIMAL(9, 2), link NVARCHAR(256), during DATETIME);")
-    cursor.executemany("INSERT INTO top_listings (item_name, game_name, quantity, normal_price, link, during) VALUES (?, ?, ?, ?, ?, ?)", rows)
+    cursor.executemany("INSERT INTO top_listings (item_name, game_name, quantity, normal_price, link, during) VALUES (?, ?, ?, ?, ?, STRFTIME('%s', 'now'))", rows)
     conn.commit()
 
 def update_price_changes_diff():
     cursor = conn.cursor()
-    cursor.execute("SELECT TOP 2 item_name, normal_price ORDER BY during DESC")
+    cursor.execute("""
+        SELECT * FROM (
+            -- lag function to calculate delta on top two most recent results per item_name
+            SELECT
+                t1.item_name,
+                t1.normal_price - LAG(t1.normal_price, 1)
+                    OVER (PARTITION BY t1.item_name ORDER BY t1.during) price_delta,
+                t1.normal_price,
+                t1.during
+            FROM top_listings t1
+            -- WHERE top 2 most recent results for each item_name
+            WHERE t1.during IN (
+                SELECT during
+                FROM top_listings t2
+                WHERE t1.item_name = t2.item_name
+                ORDER BY during DESC
+                LIMIT 2
+            )
+            -- WHERE there is more than one result for each item_name
+            AND 1 < (
+                SELECT COUNT(*)
+                FROM top_listings t2
+                WHERE t1.item_name = t2.item_name
+            )
+        )
+        WHERE price_delta IS NOT NULL
+        ORDER BY during DESC
+    """)
+    string_lines = []
+    for entry in cursor.fetchall():
+        name, price_diff, price, when = entry[0], entry[1], entry[2], entry[3]
+        diff_char = '+' if price_diff < 0 else '-'
+        diff_char = ' ' if price_diff == 0 else diff_char
+        string_lines.append(f"{diff_char} {name:<64} {price_diff:<9.2f} {price:<9.2f} {when}")
+    with open("./price_diff.diff", "w") as f:
+        f.write('\n'.join(string_lines))
 
 if __name__=="__main__":
     while True:
@@ -81,6 +115,7 @@ if __name__=="__main__":
         for row in rows:
             print(f"{row[0]:<64}{row[1]:<64}{row[2]:<12}{row[3]:<16}")
         write_to_top_results_database(rows) # Write tuples
+        update_price_changes_diff()
         if LOOP:
             time.sleep(LOOP_WAIT)
         else:
